@@ -1,16 +1,13 @@
-
-from fastapi import FastAPI, UploadFile, File, HTTPException
+from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel
-from app.services.rag.generator import generate_answer
-from app.services.rag.indexer import index_documents
-from app.config import settings
+import uvicorn
 
-app = FastAPI(
-    title="RAG Application Kit",
-    description="Production RAG system with FAISS vector store",
-    version="1.0.0"
-)
+from .config import settings
+from .database import engine
+from .auth import router as auth_router
+from .ai import router as ai_router
+
+app = FastAPI(title="Beginner AI Backend")
 
 app.add_middleware(
     CORSMiddleware,
@@ -20,30 +17,8 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-class QueryRequest(BaseModel):
-    question: str
+app.include_router(auth_router, prefix="/auth", tags=["auth"])
+app.include_router(ai_router, prefix="/ai", tags=["ai"])
 
-@app.get("/health")
-async def health():
-    return {"status": "ok", "vector_store": settings.VECTOR_DB_PATH}
-
-@app.post("/rag/query")
-async def query_rag(request: QueryRequest):
-    answer = await generate_answer(request.question)
-    return {
-        "answer": answer["answer"],
-        "sources": answer["sources"],
-        "confidence": answer.get("confidence", 0.0)
-    }
-
-@app.post("/documents/index")
-async def upload_documents(file: UploadFile = File(...)):
-    if not file.filename.endswith((".pdf", ".docx", ".txt")):
-        raise HTTPException(400, "Unsupported file type")
-    return await index_documents(file)
-
-@app.delete("/documents/clear")
-async def clear_vector_store():
-    from app.services.vector_store.faiss_store import clear_store
-    clear_store()
-    return {"status": "cleared"}
+if __name__ == "__main__":
+    uvicorn.run(app, host="0.0.0.0", port=8000)
